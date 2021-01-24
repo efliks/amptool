@@ -1,4 +1,4 @@
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 
 
 AtomRow = namedtuple('AtomRow', [
@@ -69,18 +69,27 @@ class ProteinResidue(object):
     def __init__(self, residue_serial, residue_label, atom_list):
         self.residue_serial = residue_serial
         self.residue_name = residue_label
-        self.atom_list = atom_list
+        self.atom_map = OrderedDict([
+            (protein_atom.atom_name, protein_atom)
+            for protein_atom in atom_list
+        ])
 
 
 class ProteinChain(object):
     def __init__(self, chain_id, residue_list):
         self.chain_id = chain_id
-        self.residue_list = residue_list
+        self.residue_map = OrderedDict([
+            (protein_residue.residue_serial, protein_residue)
+            for protein_residue in residue_list
+        ])
 
 
 class Protein(object):
     def __init__(self, chain_list):
-        self.chain_list = chain_list
+        self.chain_map = OrderedDict([
+            (protein_chain.chain_id, protein_chain)
+            for protein_chain in chain_list
+        ])
 
 
 class ProteinPDBBuilder(object):

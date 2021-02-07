@@ -1,3 +1,6 @@
+import math
+import numpy
+
 from collections import namedtuple, OrderedDict
 
 
@@ -50,7 +53,10 @@ def make_field(row, begin, end, converter):
         column = row[begin]
     if column:
         try:
-            return converter(column)
+            converted = converter(column)
+            if isinstance(converted, str):
+                return converted.strip()
+            return converted
         except ValueError:
             pass
 
@@ -58,30 +64,104 @@ def make_field(row, begin, end, converter):
 class ProteinAtom(object):
     def __init__(self, atom_serial, atom_label,
                  location_x, location_y, location_z):
-        self.atom_serial = atom_serial
-        self.atom_name = atom_label
-        self.location_x = location_x
-        self.location_y = location_y
-        self.location_z = location_z
+        self.serial = atom_serial
+        self.label = atom_label
+        self.x = location_x
+        self.y = location_y
+        self.z = location_z
+
+
+class IntCoor(object):
+    def __init__(self, i, j, k, l, ij, ijk, ijkl):
+        self.i = i
+        self.j = j
+        self.k = k
+        self.l = l
+        self.ij = float(ij)
+        self.ijk = float(ijk)
+        self.ijkl = float(ijkl)
+
+    @staticmethod
+    def __normalize_vector(vector):
+        return (1.0 / numpy.linalg.norm(vector)) * vector
+
+    @staticmethod
+    def __make_vector(atom):
+        return numpy.array((
+            atom.x,
+            atom.y,
+            atom.z
+        ))
+
+    def make_atom(self, atom_map, atom_serial=0):
+        #         (a) I
+        #              \
+        #               \
+        #            (b) J----K (c)
+        #                      \
+        #                       \
+        #                        L (d)
+        #     values (Rij),(Tijk),(Pijkl),(Tjkl),(Rkl)
+        a = self.__make_vector(atom_map[self.l])
+        b = self.__make_vector(atom_map[self.k])
+        c = self.__make_vector(atom_map[self.j])
+        ba = a - b
+        j = self.__normalize_vector(c - b)
+        k = self.__normalize_vector(numpy.cross(ba, j))
+        i = self.__normalize_vector(numpy.cross(j, k))
+        psi = self.ijkl * math.pi / 180.0
+        t = math.cos(psi) * i + math.sin(psi) * k
+        chi = self.ijk * math.pi / 180.0
+        q = -math.cos(chi) * j + math.sin(chi) * t
+        location = c + self.ij * q
+        return ProteinAtom(
+            atom_serial,
+            self.i,
+            location[0],
+            location[1],
+            location[2]
+        )
 
 
 class ProteinResidue(object):
+    BACKBONE_LABELS = ('N', 'HN', 'CA', 'HA', 'C', 'O', 'CB')
+
     def __init__(self, residue_serial, residue_label, atom_list):
-        self.residue_serial = residue_serial
-        self.residue_name = residue_label
+        self.serial = residue_serial
+        self.label = residue_label
         self.atom_map = OrderedDict([
-            (protein_atom.atom_name, protein_atom)
+            (protein_atom.label, protein_atom)
             for protein_atom in atom_list
         ])
+
+    def __iter__(self):
+        for atom in self.atom_map.values():
+            yield atom
+
+    def remove_side_chain(self):
+        self.atom_map = OrderedDict([
+            (protein_atom.label, protein_atom)
+            for protein_atom in self.atom_map.values()
+            if protein_atom.label in ProteinResidue.BACKBONE_LABELS
+        ])
+
+    def fill_side_chain(self, ic_table):
+        for internal_coordinate in ic_table:
+            atom = internal_coordinate.make_atom(self.atom_map)
+            self.atom_map[atom.label] = atom
 
 
 class ProteinChain(object):
     def __init__(self, chain_id, residue_list):
         self.chain_id = chain_id
         self.residue_map = OrderedDict([
-            (protein_residue.residue_serial, protein_residue)
+            (protein_residue.serial, protein_residue)
             for protein_residue in residue_list
         ])
+
+    def __iter__(self):
+        for residue in self.residue_map.values():
+            yield residue
 
 
 class Protein(object):
@@ -90,6 +170,31 @@ class Protein(object):
             (protein_chain.chain_id, protein_chain)
             for protein_chain in chain_list
         ])
+
+    def __iter__(self):
+        for chain in self.chain_map.values():
+            yield chain
+
+    def remove_side_chains(self):
+        for chain in self:
+            for residue in chain:
+                residue.remove_side_chain()
+
+    def fill_side_chains(self, ic_table):
+        for chain in self:
+            for residue in chain:
+                residue.fill_side_chain(ic_table)
+
+    def to_pdb(self, fp):
+        for chain in self:
+            for residue in chain:
+                for atom in residue:
+                    fp.write(
+                        f'ATOM  {atom.serial:>5}  {atom.label:<4}'
+                        f'{residue.label}{chain.chain_id}   {residue.serial:>3}    '
+                        f'{atom.x:>8.3f}{atom.y:>8.3f}{atom.z:>8.3f}\n'
+                    )
+        fp.write('END\n')
 
 
 class ProteinPDBBuilder(object):
@@ -147,5 +252,14 @@ class ProteinPDBBuilder(object):
         return Protein(protein_chains)
 
 
-protein = ProteinPDBBuilder('all_ala_helix.pdb').build()
-print('!')
+with open('monomer_reorder.ic') as f:
+    ic_table = []
+    for row in f.readlines():
+        ic_table.append(IntCoor(*row.split()))
+
+protein = ProteinPDBBuilder('all_ala_helix_short.pdb').build()
+protein.remove_side_chains()
+protein.fill_side_chains(ic_table)
+
+with open('my.pdb', 'w') as f:
+    protein.to_pdb(f)

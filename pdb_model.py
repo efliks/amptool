@@ -150,6 +150,20 @@ class ProteinResidue(object):
             atom = internal_coordinate.make_atom(self.atom_map)
             self.atom_map[atom.label] = atom
 
+    def renumerate_atoms(self, atom_serial):
+        reordered_map = []
+        for atom in self:
+            reordered_map.append((atom.label, ProteinAtom(
+                atom_serial,
+                atom.label,
+                atom.x,
+                atom.y,
+                atom.z
+            )))
+            atom_serial += 1
+        self.atom_map = OrderedDict(reordered_map)
+        return atom_serial
+
 
 class ProteinChain(object):
     def __init__(self, chain_id, residue_list):
@@ -184,6 +198,13 @@ class Protein(object):
         for chain in self:
             for residue in chain:
                 residue.fill_side_chain(ic_table)
+
+    def renumerate_atoms(self):
+        atom_serial = 1
+        for chain in self:
+            for residue in chain:
+                atom_serial = residue.renumerate_atoms(
+                    atom_serial)
 
     def to_pdb(self, fp):
         for chain in self:
@@ -260,6 +281,7 @@ with open('monomer_reorder.ic') as f:
 protein = ProteinPDBBuilder('all_ala_helix_short.pdb').build()
 protein.remove_side_chains()
 protein.fill_side_chains(ic_table)
+protein.renumerate_atoms()
 
 with open('my.pdb', 'w') as f:
     protein.to_pdb(f)

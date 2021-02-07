@@ -107,5 +107,6 @@ for internal_coord in internal_coords:
         *atom_labels, internal_coord.ij, internal_coord.ijk, internal_coord.ijkl
     ))
 
-for crd in labeled_internal_coords:
-    print(f'{crd.i} {crd.j} {crd.k} {crd.l} {crd.ij} {crd.ijk} {crd.ijkl}')
+with open('monomer_reorder.ic', 'w') as f:
+    for crd in labeled_internal_coords:
+        f.write(f'{crd.i} {crd.j} {crd.k} {crd.l} {crd.ij} {crd.ijk} {crd.ijkl}\n')

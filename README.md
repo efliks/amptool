@@ -2,7 +2,6 @@
 
 A Python package for generating 3D models of amphiphilic polypeptides.
 
-- **Author**: Mikolaj Feliks
 - **Version**: 0.1.0
 - **License**: Open source
 - **Language**: Python ≥3.12
